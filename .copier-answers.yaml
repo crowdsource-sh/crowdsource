@@ -1,0 +1,12 @@
+# Changes here will be overwritten by Copier
+_commit: 9a153d8
+_src_path: https://github.com/python-project-templates/base.git
+add_docs: true
+add_extension: rustjswasm
+add_wiki: false
+email: dev@1kbgz.com
+github: 1kbgz
+project_description: crowdsource.sh
+project_name: crowdsource
+python_version_primary: '3.11'
+team: 1kbgz
