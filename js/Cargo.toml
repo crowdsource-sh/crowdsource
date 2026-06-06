@@ -12,5 +12,8 @@ path = "src/rust/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-crowdsource = { path = "../rust", version = "*" }
+# default-features = false → just the (transport-free) models + error types, so
+# the wasm build doesn't pull the native reqwest/rustls transport. The JS client
+# transport is a wasm shell (future phase).
+crowdsource = { path = "../rust", version = "*", default-features = false }
 wasm-bindgen = "=0.2.115"
