@@ -42,6 +42,16 @@ impl Client {
         })
     }
 
+    /// Authenticate with a bearer token (e.g. a Supabase session JWT).
+    #[staticmethod]
+    fn with_bearer(base_url: String, bearer_token: String) -> PyResult<Self> {
+        let inner = CoreClient::with_bearer(base_url, bearer_token).map_err(pyerr)?;
+        Ok(Self {
+            inner,
+            rt: runtime()?,
+        })
+    }
+
     #[pyo3(signature = (status=None, competition_type=None, limit=None, offset=None, mine=None))]
     fn list_competitions(
         &self,

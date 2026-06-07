@@ -26,6 +26,7 @@ const API_V1: &str = "/v1";
 pub struct Client {
     base_url: String,
     api_key: Option<String>,
+    bearer: Option<String>,
     http: reqwest::Client,
 }
 
@@ -36,21 +37,26 @@ impl Client {
         base_url: impl Into<String>,
         api_key: Option<String>,
     ) -> Result<Self, CrowdsourceError> {
-        // The wasm build uses the browser fetch backend, whose ClientBuilder
-        // doesn't support timeout/user_agent — use the default client there.
-        #[cfg(not(target_arch = "wasm32"))]
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .user_agent(concat!("crowdsource-rs/", env!("CARGO_PKG_VERSION")))
-            .build()?;
-        #[cfg(target_arch = "wasm32")]
-        let http = reqwest::Client::new();
-
-        let base_url = base_url.into().trim_end_matches('/').to_string();
         Ok(Self {
-            base_url,
+            base_url: normalize_base(base_url),
             api_key,
-            http,
+            bearer: None,
+            http: http_client()?,
+        })
+    }
+
+    /// Build a client that authenticates with a bearer token (e.g. a Supabase
+    /// session JWT), sent as `Authorization: Bearer …`. This is how browser
+    /// sessions authenticate (the server accepts both Bearer and `X-API-Key`).
+    pub fn with_bearer(
+        base_url: impl Into<String>,
+        bearer_token: impl Into<String>,
+    ) -> Result<Self, CrowdsourceError> {
+        Ok(Self {
+            base_url: normalize_base(base_url),
+            api_key: None,
+            bearer: Some(bearer_token.into()),
+            http: http_client()?,
         })
     }
 
@@ -66,7 +72,10 @@ impl Client {
 
     fn build(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let mut req = self.http.request(method, format!("{}{}", self.base_url, path));
-        if let Some(key) = &self.api_key {
+        // Bearer (session JWT) takes precedence; otherwise the API key.
+        if let Some(token) = &self.bearer {
+            req = req.bearer_auth(token);
+        } else if let Some(key) = &self.api_key {
             req = req.header("X-API-Key", key);
         }
         req
@@ -209,4 +218,24 @@ fn enum_str<T: Serialize>(v: &T) -> String {
         .ok()
         .and_then(|x| x.as_str().map(str::to_string))
         .unwrap_or_default()
+}
+
+fn normalize_base(base_url: impl Into<String>) -> String {
+    base_url.into().trim_end_matches('/').to_string()
+}
+
+// The wasm build uses the browser fetch backend, whose ClientBuilder doesn't
+// support timeout/user_agent — use the default client there.
+fn http_client() -> Result<reqwest::Client, CrowdsourceError> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok(reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent(concat!("crowdsource-rs/", env!("CARGO_PKG_VERSION")))
+            .build()?)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok(reqwest::Client::new())
+    }
 }

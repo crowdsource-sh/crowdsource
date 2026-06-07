@@ -33,6 +33,15 @@ impl Client {
         Ok(Client { inner })
     }
 
+    /// `Client.withBearer(baseUrl, token)` — authenticate with a session JWT
+    /// (e.g. the Supabase access token). This is what the browser app uses.
+    #[wasm_bindgen(js_name = withBearer)]
+    pub fn with_bearer(base_url: String, bearer_token: String) -> Result<Client, JsError> {
+        let inner = CoreClient::with_bearer(base_url, bearer_token)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(Client { inner })
+    }
+
     /// `listCompetitions(status?, type?, limit?, offset?, mine?)`.
     #[wasm_bindgen(js_name = listCompetitions)]
     pub fn list_competitions(
