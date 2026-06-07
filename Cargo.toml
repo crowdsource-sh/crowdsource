@@ -10,8 +10,14 @@ path = "rust/python/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-crowdsource = { path = "./rust", version = "*" }
+# Aliased to avoid clashing with this crate's own lib name (`crowdsource`).
+crowdsource_core = { path = "./rust", version = "*", package = "crowdsource" }
 pyo3 = { version = "0.28.2", features = ["abi3", "extension-module", "multiple-pymethods"] }
+pythonize = "0.28"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
+serde = "1.0"
+serde_json = "1.0"
+uuid = "1"
 
 [profile.release]
 panic = 'abort'

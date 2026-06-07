@@ -13,6 +13,7 @@ use crate::models::{
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -35,10 +36,16 @@ impl Client {
         base_url: impl Into<String>,
         api_key: Option<String>,
     ) -> Result<Self, CrowdsourceError> {
+        // The wasm build uses the browser fetch backend, whose ClientBuilder
+        // doesn't support timeout/user_agent — use the default client there.
+        #[cfg(not(target_arch = "wasm32"))]
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent(concat!("crowdsource-rs/", env!("CARGO_PKG_VERSION")))
             .build()?;
+        #[cfg(target_arch = "wasm32")]
+        let http = reqwest::Client::new();
+
         let base_url = base_url.into().trim_end_matches('/').to_string();
         Ok(Self {
             base_url,

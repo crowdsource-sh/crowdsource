@@ -74,7 +74,8 @@ pub struct Competition {
 }
 
 /// Body for `POST /v1/competitions`. Optional fields are omitted when `None`.
-#[derive(Debug, Clone, Serialize)]
+/// `Deserialize` lets the wasm/python bindings construct one from a JS/Python object.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCompetition {
     pub title: String,
     pub description: String,
@@ -84,19 +85,19 @@ pub struct CreateCompetition {
     pub bounty_mode: BountyMode,
     pub bounty_top_n: i32,
     pub end_date: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounty_weights: Option<Vec<i32>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dataset_schema: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_auth_header: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_offset_minutes: Option<i32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompetitionListResponse {
     pub competitions: Vec<Competition>,
     pub total: i64,
@@ -105,7 +106,8 @@ pub struct CompetitionListResponse {
 }
 
 /// Filters for `GET /v1/competitions`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct CompetitionQuery {
     pub status: Option<CompetitionStatus>,
     pub competition_type: Option<CompetitionType>,
@@ -129,19 +131,19 @@ pub struct Submission {
 }
 
 /// Body for creating a submission.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSubmission {
     pub s3_key: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditBalance {
     pub balance: i64,
     pub purchased_total: i64,
     pub earned_total: i64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Me {
     pub id: Uuid,
     pub email: String,
