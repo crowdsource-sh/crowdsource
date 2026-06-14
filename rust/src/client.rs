@@ -7,8 +7,10 @@
 
 use crate::error::{CrowdsourceError, ProblemDetails};
 use crate::models::{
-    Competition, CompetitionListResponse, CompetitionQuery, CreateCompetition, CreateSubmission,
-    CreditBalance, Me, Submission,
+    ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionListResponse,
+    CompetitionQuery, CreateApiKey, CreateApiKeyResponse, CreateCompetition, CreateDataSource,
+    CreateSubmission, CreditBalance, DataSource, EconomicConfigResponse, EventsResponse,
+    LeaderboardResponse, Me, Org, RankTransition, Submission, Summary, UpdateMe,
 };
 use reqwest::Method;
 use serde::de::DeserializeOwned;
@@ -20,6 +22,9 @@ use uuid::Uuid;
 const DEFAULT_BASE_URL: &str = "https://api.crowdsource.sh";
 /// The versioned API prefix on the live server. (Will become `/api/v1` later.)
 const API_V1: &str = "/v1";
+/// Max attempts (initial + retries) for idempotent GET requests.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_ATTEMPTS: u32 = 3;
 
 /// A connected crowdsource API client.
 #[derive(Clone, Debug)]
@@ -64,14 +69,16 @@ impl Client {
     /// `CROWDSOURCE_SERVER_URL` (default `https://api.crowdsource.sh`) and
     /// `CROWDSOURCE_API_KEY` (optional).
     pub fn from_env() -> Result<Self, CrowdsourceError> {
-        let base =
-            std::env::var("CROWDSOURCE_SERVER_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        let base = std::env::var("CROWDSOURCE_SERVER_URL")
+            .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
         let key = std::env::var("CROWDSOURCE_API_KEY").ok();
         Self::new(base, key)
     }
 
     fn build(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
-        let mut req = self.http.request(method, format!("{}{}", self.base_url, path));
+        let mut req = self
+            .http
+            .request(method, format!("{}{}", self.base_url, path));
         // Bearer (session JWT) takes precedence; otherwise the API key.
         if let Some(token) = &self.bearer {
             req = req.bearer_auth(token);
@@ -81,6 +88,8 @@ impl Client {
         req
     }
 
+    /// Execute a request once (no retries). Used for non-idempotent writes —
+    /// retrying a POST that may have spent credits is unsafe.
     async fn exec<T: DeserializeOwned>(
         &self,
         req: reqwest::RequestBuilder,
@@ -88,43 +97,115 @@ impl Client {
         let res = req.send().await?;
         let status = res.status();
         let bytes = res.bytes().await?;
-        if status.is_success() {
-            Ok(serde_json::from_slice(&bytes)?)
-        } else {
-            let problem = serde_json::from_slice::<ProblemDetails>(&bytes).unwrap_or_else(|_| {
-                ProblemDetails {
-                    problem_type: None,
-                    title: Some(status.canonical_reason().unwrap_or("error").to_string()),
-                    status: status.as_u16(),
-                    detail: None,
+        parse_response(status, &bytes)
+    }
+
+    /// Execute an idempotent GET, retrying transient failures (transport errors,
+    /// 5xx, 429) with exponential backoff that honors `Retry-After`. On wasm
+    /// (no async sleep primitive) this is a single attempt.
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn exec_get<T: DeserializeOwned>(
+        &self,
+        req: reqwest::RequestBuilder,
+    ) -> Result<T, CrowdsourceError> {
+        let mut attempt = 1u32;
+        loop {
+            // Clone so the original survives for the next attempt; a non-cloneable
+            // body (never the case for GETs) falls back to a single send.
+            let Some(this) = req.try_clone() else {
+                return self.exec(req).await;
+            };
+            match this.send().await {
+                Ok(res) => {
+                    let status = res.status();
+                    let retryable = status.is_server_error() || status.as_u16() == 429;
+                    if retryable && attempt < MAX_ATTEMPTS {
+                        let delay = retry_after(&res).unwrap_or_else(|| backoff(attempt));
+                        tokio::time::sleep(delay).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    let bytes = res.bytes().await?;
+                    return parse_response(status, &bytes);
                 }
-            });
-            Err(CrowdsourceError::Api(problem))
+                Err(e) => {
+                    if attempt < MAX_ATTEMPTS
+                        && (e.is_timeout() || e.is_connect() || e.is_request())
+                    {
+                        tokio::time::sleep(backoff(attempt)).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            }
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn exec_get<T: DeserializeOwned>(
+        &self,
+        req: reqwest::RequestBuilder,
+    ) -> Result<T, CrowdsourceError> {
+        self.exec(req).await
     }
 
     // ---- health / identity ----
 
     /// `GET /health` — liveness probe. Returns the raw JSON body.
     pub async fn health(&self) -> Result<serde_json::Value, CrowdsourceError> {
-        self.exec(self.build(Method::GET, "/health")).await
+        self.exec_get(self.build(Method::GET, "/health")).await
     }
 
     /// `GET /v1/version` — build + connectivity info.
     pub async fn version(&self) -> Result<serde_json::Value, CrowdsourceError> {
-        self.exec(self.build(Method::GET, &format!("{API_V1}/version")))
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/version")))
+            .await
+    }
+
+    /// `GET /v1/summary` — platform-wide stats.
+    pub async fn summary(&self) -> Result<Summary, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/summary")))
+            .await
+    }
+
+    /// `GET /v1/events` — recent activity feed (ticker). `limit` is clamped
+    /// server-side to `[1, 50]` (default 20).
+    pub async fn events(&self, limit: Option<i64>) -> Result<EventsResponse, CrowdsourceError> {
+        let mut req = self.build(Method::GET, &format!("{API_V1}/events"));
+        if let Some(l) = limit {
+            req = req.query(&[("limit", l.to_string())]);
+        }
+        self.exec_get(req).await
+    }
+
+    /// `GET /v1/config/economics` — the active economic config + its version.
+    pub async fn economic_config(&self) -> Result<EconomicConfigResponse, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/config/economics")))
             .await
     }
 
     /// `GET /v1/me` — the authenticated user.
     pub async fn me(&self) -> Result<Me, CrowdsourceError> {
-        self.exec(self.build(Method::GET, &format!("{API_V1}/me")))
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/me")))
+            .await
+    }
+
+    /// `PATCH /v1/me` — update the caller's profile (display name, avatar).
+    pub async fn update_me(&self, req: &UpdateMe) -> Result<Me, CrowdsourceError> {
+        self.exec(self.build(Method::PATCH, &format!("{API_V1}/me")).json(req))
             .await
     }
 
     /// `GET /v1/me/credits` — credit balance.
     pub async fn credit_balance(&self) -> Result<CreditBalance, CrowdsourceError> {
-        self.exec(self.build(Method::GET, &format!("{API_V1}/me/credits")))
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/credits")))
+            .await
+    }
+
+    /// `GET /v1/orgs/:id`.
+    pub async fn get_org(&self, org_id: Uuid) -> Result<Org, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/orgs/{org_id}")))
             .await
     }
 
@@ -151,15 +232,21 @@ impl Client {
         if query.mine == Some(true) {
             params.push(("mine", "true".to_string()));
         }
+        if query.hosted == Some(true) {
+            params.push(("hosted", "true".to_string()));
+        }
+        if let Some(tag) = &query.tag {
+            params.push(("tag", tag.clone()));
+        }
         let req = self
             .build(Method::GET, &format!("{API_V1}/competitions"))
             .query(&params);
-        self.exec(req).await
+        self.exec_get(req).await
     }
 
     /// `GET /v1/competitions/:id`.
     pub async fn get_competition(&self, id: Uuid) -> Result<Competition, CrowdsourceError> {
-        self.exec(self.build(Method::GET, &format!("{API_V1}/competitions/{id}")))
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/competitions/{id}")))
             .await
     }
 
@@ -175,9 +262,32 @@ impl Client {
         .await
     }
 
+    /// `POST /v1/competitions/:id/publish` — move a draft to open.
+    pub async fn publish_competition(&self, id: Uuid) -> Result<Competition, CrowdsourceError> {
+        self.exec(self.build(Method::POST, &format!("{API_V1}/competitions/{id}/publish")))
+            .await
+    }
+
+    /// `POST /v1/competitions/:id/close` — close submissions early.
+    pub async fn close_competition(&self, id: Uuid) -> Result<Competition, CrowdsourceError> {
+        self.exec(self.build(Method::POST, &format!("{API_V1}/competitions/{id}/close")))
+            .await
+    }
+
+    /// `GET /v1/competitions/:id/leaderboard`.
+    pub async fn leaderboard(&self, id: Uuid) -> Result<LeaderboardResponse, CrowdsourceError> {
+        self.exec_get(self.build(
+            Method::GET,
+            &format!("{API_V1}/competitions/{id}/leaderboard"),
+        ))
+        .await
+    }
+
     // ---- predictions / submissions ----
 
-    /// `POST /v1/competitions/:id/submissions` — submit a prediction.
+    /// `POST /v1/competitions/:id/submissions` — submit a prediction. Build the
+    /// body with [`CreateSubmission::from_payload`] (inline JSON) or
+    /// [`CreateSubmission::from_s3_key`].
     pub async fn submit(
         &self,
         competition_id: Uuid,
@@ -198,7 +308,7 @@ impl Client {
         &self,
         competition_id: Uuid,
     ) -> Result<Vec<Submission>, CrowdsourceError> {
-        self.exec(self.build(
+        self.exec_get(self.build(
             Method::GET,
             &format!("{API_V1}/competitions/{competition_id}/submissions"),
         ))
@@ -207,9 +317,135 @@ impl Client {
 
     /// `GET /v1/me/submissions` — the caller's submissions.
     pub async fn list_my_submissions(&self) -> Result<Vec<Submission>, CrowdsourceError> {
-        self.exec(self.build(Method::GET, &format!("{API_V1}/me/submissions")))
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/submissions")))
             .await
     }
+
+    // ---- api keys ----
+
+    /// `GET /v1/api-keys` — list the caller's API keys (secrets never returned).
+    pub async fn list_api_keys(&self) -> Result<Vec<ApiKey>, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/api-keys")))
+            .await
+    }
+
+    /// `POST /v1/api-keys` — create a key. The plaintext `secret` is returned
+    /// exactly once in the response; store it immediately.
+    pub async fn create_api_key(
+        &self,
+        name: impl Into<String>,
+    ) -> Result<CreateApiKeyResponse, CrowdsourceError> {
+        let body = CreateApiKey { name: name.into() };
+        self.exec(
+            self.build(Method::POST, &format!("{API_V1}/api-keys"))
+                .json(&body),
+        )
+        .await
+    }
+
+    /// `DELETE /v1/api-keys/:id` — revoke a key.
+    pub async fn delete_api_key(&self, id: Uuid) -> Result<(), CrowdsourceError> {
+        let res = self
+            .build(Method::DELETE, &format!("{API_V1}/api-keys/{id}"))
+            .send()
+            .await?;
+        let status = res.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            let bytes = res.bytes().await?;
+            parse_response::<serde_json::Value>(status, &bytes).map(|_| ())
+        }
+    }
+
+    // ---- data sources ----
+
+    /// `GET /v1/data-sources`.
+    pub async fn list_data_sources(&self) -> Result<Vec<DataSource>, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/data-sources")))
+            .await
+    }
+
+    /// `POST /v1/data-sources` — register a data source.
+    pub async fn create_data_source(
+        &self,
+        req: &CreateDataSource,
+    ) -> Result<DataSource, CrowdsourceError> {
+        self.exec(
+            self.build(Method::POST, &format!("{API_V1}/data-sources"))
+                .json(req),
+        )
+        .await
+    }
+
+    // ---- rank ----
+
+    /// `POST /v1/me/rank/up` — spend credits to advance one rank.
+    pub async fn rank_up(&self) -> Result<RankTransition, CrowdsourceError> {
+        self.exec(self.build(Method::POST, &format!("{API_V1}/me/rank/up")))
+            .await
+    }
+
+    /// `POST /v1/me/rank/down` — step down one rank (partial refund).
+    pub async fn rank_down(&self) -> Result<RankTransition, CrowdsourceError> {
+        self.exec(self.build(Method::POST, &format!("{API_V1}/me/rank/down")))
+            .await
+    }
+
+    // ---- credits / checkout ----
+
+    /// `POST /v1/credits/checkout` — start a Stripe Checkout session for the
+    /// credit pack priced at `amount_cents`. Returns the URL to open.
+    pub async fn create_checkout(
+        &self,
+        amount_cents: i64,
+    ) -> Result<CheckoutResponse, CrowdsourceError> {
+        let body = CheckoutRequest { amount_cents };
+        self.exec(
+            self.build(Method::POST, &format!("{API_V1}/credits/checkout"))
+                .json(&body),
+        )
+        .await
+    }
+}
+
+/// Turn a finished HTTP response (status + body bytes) into a typed result,
+/// mapping non-2xx into a [`CrowdsourceError::Api`] from the RFC 7807 body.
+fn parse_response<T: DeserializeOwned>(
+    status: reqwest::StatusCode,
+    bytes: &[u8],
+) -> Result<T, CrowdsourceError> {
+    if status.is_success() {
+        Ok(serde_json::from_slice(bytes)?)
+    } else {
+        let problem =
+            serde_json::from_slice::<ProblemDetails>(bytes).unwrap_or_else(|_| ProblemDetails {
+                problem_type: None,
+                title: Some(status.canonical_reason().unwrap_or("error").to_string()),
+                status: status.as_u16(),
+                detail: None,
+            });
+        Err(CrowdsourceError::Api(problem))
+    }
+}
+
+/// Backoff for retry attempt `n` (1-based): 250ms, 500ms, …
+#[cfg(not(target_arch = "wasm32"))]
+fn backoff(attempt: u32) -> Duration {
+    Duration::from_millis(250u64 << (attempt.saturating_sub(1)).min(4))
+}
+
+/// Parse a `Retry-After` header (delta-seconds form) into a delay.
+#[cfg(not(target_arch = "wasm32"))]
+fn retry_after(res: &reqwest::Response) -> Option<Duration> {
+    res.headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
 }
 
 /// Serialize a `serde(rename_all = "snake_case")` enum to its wire string.

@@ -7,7 +7,7 @@
 
 use crowdsource_core::{
     Client as CoreClient, CompetitionQuery, CompetitionStatus, CompetitionType, CreateCompetition,
-    CreateSubmission,
+    CreateDataSource, CreateSubmission, UpdateMe,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -52,7 +52,62 @@ impl Client {
         })
     }
 
-    #[pyo3(signature = (status=None, competition_type=None, limit=None, offset=None, mine=None))]
+    // ---- platform / config ----
+
+    fn summary(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self.rt.block_on(self.inner.summary()).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    #[pyo3(signature = (limit=None))]
+    fn events(&self, py: Python<'_>, limit: Option<i64>) -> PyResult<Py<PyAny>> {
+        let res = self.rt.block_on(self.inner.events(limit)).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn economic_config(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.economic_config())
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    // ---- identity ----
+
+    fn me(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self.rt.block_on(self.inner.me()).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn update_me(&self, py: Python<'_>, patch: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let patch: UpdateMe =
+            pythonize::depythonize(patch).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.update_me(&patch))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn credit_balance(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.credit_balance())
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn get_org(&self, py: Python<'_>, org_id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&org_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self.rt.block_on(self.inner.get_org(id)).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    // ---- competitions ----
+
+    #[pyo3(signature = (status=None, competition_type=None, limit=None, offset=None, mine=None, hosted=None, tag=None))]
+    #[allow(clippy::too_many_arguments)]
     fn list_competitions(
         &self,
         py: Python<'_>,
@@ -61,6 +116,8 @@ impl Client {
         limit: Option<i64>,
         offset: Option<i64>,
         mine: Option<bool>,
+        hosted: Option<bool>,
+        tag: Option<String>,
     ) -> PyResult<Py<PyAny>> {
         let query = CompetitionQuery {
             status: status.and_then(|s| parse_enum::<CompetitionStatus>(&s)),
@@ -68,6 +125,8 @@ impl Client {
             limit,
             offset,
             mine,
+            hosted,
+            tag,
         };
         let res = self
             .rt
@@ -95,12 +154,50 @@ impl Client {
         to_py(py, &res)
     }
 
-    fn submit(&self, py: Python<'_>, competition_id: String, s3_key: String) -> PyResult<Py<PyAny>> {
-        let cid =
-            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    fn publish_competition(&self, py: Python<'_>, id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let res = self
             .rt
-            .block_on(self.inner.submit(cid, &CreateSubmission { s3_key }))
+            .block_on(self.inner.publish_competition(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn close_competition(&self, py: Python<'_>, id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.close_competition(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn leaderboard(&self, py: Python<'_>, id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.leaderboard(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    // ---- predictions / submissions ----
+
+    /// `submit(competition_id, body)` — `body` is a dict: `{"payload": ...}` or
+    /// `{"s3_key": "..."}`.
+    fn submit(
+        &self,
+        py: Python<'_>,
+        competition_id: String,
+        body: &Bound<'_, PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        let cid =
+            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let body: CreateSubmission =
+            pythonize::depythonize(body).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.submit(cid, &body))
             .map_err(pyerr)?;
         to_py(py, &res)
     }
@@ -123,13 +220,71 @@ impl Client {
         to_py(py, &res)
     }
 
-    fn me(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let res = self.rt.block_on(self.inner.me()).map_err(pyerr)?;
+    // ---- api keys ----
+
+    fn list_api_keys(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.list_api_keys())
+            .map_err(pyerr)?;
         to_py(py, &res)
     }
 
-    fn credit_balance(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let res = self.rt.block_on(self.inner.credit_balance()).map_err(pyerr)?;
+    /// Create an API key. The returned `secret` is shown only once.
+    fn create_api_key(&self, py: Python<'_>, name: String) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.create_api_key(name))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn delete_api_key(&self, id: String) -> PyResult<()> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.rt
+            .block_on(self.inner.delete_api_key(id))
+            .map_err(pyerr)
+    }
+
+    // ---- data sources ----
+
+    fn list_data_sources(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.list_data_sources())
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn create_data_source(&self, py: Python<'_>, req: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let req: CreateDataSource =
+            pythonize::depythonize(req).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.create_data_source(&req))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    // ---- rank ----
+
+    fn rank_up(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self.rt.block_on(self.inner.rank_up()).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    fn rank_down(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let res = self.rt.block_on(self.inner.rank_down()).map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    // ---- credits / checkout ----
+
+    fn create_checkout(&self, py: Python<'_>, amount_cents: i64) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.create_checkout(amount_cents))
+            .map_err(pyerr)?;
         to_py(py, &res)
     }
 }

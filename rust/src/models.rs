@@ -8,16 +8,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompetitionType {
+    #[default]
     Classification,
     Regression,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CompetitionMetric {
+    #[default]
     Accuracy,
     F1Macro,
     Rmse,
@@ -36,11 +38,26 @@ pub enum CompetitionStatus {
     ScoringFailed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum BountyMode {
+    #[default]
     TopNEqual,
     TopNWeighted,
+}
+
+/// Rank tier. Ordered bronze → legend; `Bronze` is the default (new accounts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RankTier {
+    #[default]
+    Bronze,
+    Silver,
+    Gold,
+    Platinum,
+    Diamond,
+    Master,
+    Legend,
 }
 
 /// A competition as returned by `GET /v1/competitions/:id`.
@@ -60,22 +77,40 @@ pub struct Competition {
     pub bounty_weights: Option<serde_json::Value>,
     #[serde(default)]
     pub dataset_schema: Option<serde_json::Value>,
+    /// Minimum rank required to enter. Defaults to `Bronze`.
+    #[serde(default)]
+    pub min_rank: RankTier,
+    /// Per-submission fee (credits), stamped from config at creation.
+    #[serde(default)]
+    pub submission_fee: i64,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub end_date: DateTime<Utc>,
     #[serde(default)]
     pub recurring_interval: Option<String>,
+    #[serde(default)]
+    pub recurring_close_time: Option<String>,
+    #[serde(default)]
+    pub recurring_timezone: Option<String>,
     #[serde(default)]
     pub input_source_id: Option<Uuid>,
     #[serde(default)]
     pub resolution_source_id: Option<Uuid>,
     #[serde(default)]
     pub resolution_offset_minutes: Option<i32>,
+    #[serde(default)]
+    pub min_participants: Option<i32>,
+    #[serde(default)]
+    pub min_score: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 /// Body for `POST /v1/competitions`. Optional fields are omitted when `None`.
-/// `Deserialize` lets the wasm/python bindings construct one from a JS/Python object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `Deserialize` lets the wasm/python bindings construct one from a JS/Python
+/// object; `Default` enables the builder pattern (`CreateCompetition { title,
+/// ..Default::default() }`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreateCompetition {
     pub title: String,
     pub description: String,
@@ -95,14 +130,30 @@ pub struct CreateCompetition {
     pub oracle_auth_header: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_offset_minutes: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_rank: Option<RankTier>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_source_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution_source_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recurring_interval: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recurring_close_time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recurring_timezone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_participants: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompetitionListResponse {
     pub competitions: Vec<Competition>,
     pub total: i64,
-    pub limit: i64,
-    pub offset: i64,
 }
 
 /// Filters for `GET /v1/competitions`.
@@ -113,7 +164,12 @@ pub struct CompetitionQuery {
     pub competition_type: Option<CompetitionType>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// `mine=true` — competitions the caller has submitted to.
     pub mine: Option<bool>,
+    /// `hosted=true` — competitions owned by the caller's org.
+    pub hosted: Option<bool>,
+    /// Filter to a single tag.
+    pub tag: Option<String>,
 }
 
 /// A prediction submission (`POST /v1/competitions/:id/submissions`).
@@ -130,10 +186,32 @@ pub struct Submission {
     pub scored_at: Option<DateTime<Utc>>,
 }
 
-/// Body for creating a submission.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Body for creating a submission. Provide exactly one of `s3_key` (a key
+/// previously uploaded to object storage) or `payload` (inline prediction JSON).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CreateSubmission {
-    pub s3_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub s3_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+}
+
+impl CreateSubmission {
+    /// Submit by reference to an object-storage key.
+    pub fn from_s3_key(s3_key: impl Into<String>) -> Self {
+        Self {
+            s3_key: Some(s3_key.into()),
+            payload: None,
+        }
+    }
+
+    /// Submit an inline prediction payload (the common SDK path).
+    pub fn from_payload(payload: serde_json::Value) -> Self {
+        Self {
+            s3_key: None,
+            payload: Some(payload),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,4 +230,272 @@ pub struct Me {
     pub org_id: Uuid,
     pub rank_tier: String,
     pub rank_level: i32,
+    #[serde(default)]
+    pub is_admin: bool,
+    #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+/// Body for `PATCH /v1/me`. Only the set fields are sent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateMe {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+// ---- leaderboard ----
+
+/// One row of a competition leaderboard (`GET /v1/competitions/:id/leaderboard`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderboardEntry {
+    /// 1-based rank; `None` while the competition is still open.
+    pub rank: Option<i32>,
+    /// Anonymized handle (e.g. `player-xxxxxxxx`).
+    pub handle: String,
+    pub score: Option<f64>,
+    pub payout: Option<i64>,
+    /// True for the authenticated caller's own row.
+    #[serde(default)]
+    pub is_you: bool,
+    pub submitted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderboardResponse {
+    pub competition_id: Uuid,
+    pub status: CompetitionStatus,
+    pub total: i64,
+    pub entries: Vec<LeaderboardEntry>,
+}
+
+// ---- platform summary ----
+
+/// Platform-wide stats (`GET /v1/summary`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Summary {
+    pub competitions_open: i64,
+    pub competitions_total: i64,
+    pub active_bounties: i64,
+    pub predictions_today: i64,
+    pub predictions_total: i64,
+    pub predictors: i64,
+    pub credits_paid: i64,
+}
+
+// ---- events / ticker ----
+
+/// One activity-feed event (`GET /v1/events`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Event {
+    /// `competition_opened` | `win` | `rank_up` | `submission`.
+    pub kind: String,
+    pub ts: DateTime<Utc>,
+    pub handle: Option<String>,
+    pub title: Option<String>,
+    pub competition_id: Option<Uuid>,
+    pub amount: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventsResponse {
+    pub events: Vec<Event>,
+}
+
+// ---- API keys ----
+
+/// An API key as listed by `GET /v1/api-keys` (never includes the secret).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKey {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKey {
+    pub name: String,
+}
+
+/// Response to `POST /v1/api-keys`. `secret` is the plaintext key, returned
+/// exactly once — store it now, it cannot be retrieved again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateApiKeyResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub secret: String,
+    pub created_at: DateTime<Utc>,
+}
+
+// ---- data sources ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSource {
+    pub id: Uuid,
+    pub name: String,
+    pub description: String,
+    pub url: String,
+    pub http_method: String,
+    pub auth_header: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<String>,
+    #[serde(default)]
+    pub compatible_types: Vec<String>,
+    pub schema_format: Option<String>,
+    pub schema_text: Option<String>,
+    pub openapi_path: Option<String>,
+    #[serde(default)]
+    pub last_probe: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CreateDataSource {
+    pub name: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_header: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roles: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatible_types: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openapi_path: Option<String>,
+}
+
+// ---- rank ----
+
+/// Result of `POST /v1/me/rank/up` or `/down`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RankTransition {
+    pub rank_tier: String,
+    pub rank_level: i32,
+    /// New credit balance after the transaction.
+    pub balance: i64,
+    /// Credit delta: negative for rank up (cost), positive for rank down (refund).
+    pub delta: i64,
+}
+
+// ---- credits / checkout ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckoutRequest {
+    /// Must equal an active credit pack's `price_cents`.
+    pub amount_cents: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckoutResponse {
+    pub checkout_url: String,
+}
+
+// ---- orgs ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Org {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+// ---- economic config ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreditPack {
+    pub price_cents: i64,
+    pub credits_granted: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreationFees {
+    pub classification: i64,
+    pub regression: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LevelUpCost {
+    pub bronze: i64,
+    pub silver: i64,
+    pub gold: i64,
+    pub platinum: i64,
+    pub diamond: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TierEntryCost {
+    pub silver: i64,
+    pub gold: i64,
+    pub platinum: i64,
+    pub diamond: i64,
+    pub master: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RankEconomics {
+    pub level_up_cost: LevelUpCost,
+    pub tier_entry_cost: TierEntryCost,
+    pub rank_down_refund_num: i64,
+    pub rank_down_refund_den: i64,
+}
+
+/// A per-tier credit amount map (bronze → diamond).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TierAmounts {
+    pub bronze: i64,
+    pub silver: i64,
+    pub gold: i64,
+    pub platinum: i64,
+    pub diamond: i64,
+}
+
+/// Per-capability rollout gates. `true` = the action is enabled.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Gates {
+    pub registration: bool,
+    pub api_keys: bool,
+    pub submissions: bool,
+    pub competitions: bool,
+    pub rank_up: bool,
+    pub buy_credits: bool,
+    pub data_sources: bool,
+    pub datasets: bool,
+    pub two_factor: bool,
+}
+
+/// The platform economic config (`config` field of `GET /v1/config/economics`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EconomicConfig {
+    pub nominal_cents_per_credit: i64,
+    pub credit_packs: Vec<CreditPack>,
+    pub submission_fee_default: i64,
+    pub creation_fees: CreationFees,
+    pub rank: RankEconomics,
+    #[serde(default)]
+    pub submission_fee_by_tier: Option<TierAmounts>,
+    #[serde(default)]
+    pub min_bounty_by_tier: Option<TierAmounts>,
+    #[serde(default)]
+    pub featured_tags: Vec<String>,
+    #[serde(default)]
+    pub gates: Option<Gates>,
+    #[serde(default)]
+    pub signup_grant_credits: i64,
+}
+
+/// Response from `GET /v1/config/economics`: the active version + its config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EconomicConfigResponse {
+    pub version: i64,
+    pub config: EconomicConfig,
 }
