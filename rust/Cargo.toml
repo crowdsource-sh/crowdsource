@@ -32,6 +32,9 @@ thiserror = "2.0"
 # either one in via `dep:reqwest`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "rustls-tls"] }
+# Native-only backoff sleep for the GET retry loop (used inside the
+# `client`-gated, non-wasm path; already present in reqwest's dependency tree).
+tokio = { version = "1", default-features = false, features = ["time"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["json"] }
