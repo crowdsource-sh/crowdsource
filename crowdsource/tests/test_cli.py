@@ -1,5 +1,6 @@
 """Unit tests for the CLI's pure helpers (no network, no compiled extension)."""
 
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -98,9 +99,11 @@ def test_config_roundtrip(tmp_path, monkeypatch):
     cfg = _config.load_config()
     assert cfg["api_key"] == "cs_sk_secret"
     assert cfg["default_format"] == "json"
-    # File must be owner-only (it holds a secret).
-    mode = (_config.config_path().stat().st_mode) & 0o777
-    assert mode == 0o600
+    # File must be owner-only (it holds a secret). POSIX-only: Windows doesn't
+    # honor POSIX permission bits, so chmod(0o600) leaves the mode at 0o666.
+    if os.name == "posix":
+        mode = (_config.config_path().stat().st_mode) & 0o777
+        assert mode == 0o600
 
 
 def test_resolve_precedence(tmp_path, monkeypatch):
