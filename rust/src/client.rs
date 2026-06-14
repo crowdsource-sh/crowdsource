@@ -69,14 +69,16 @@ impl Client {
     /// `CROWDSOURCE_SERVER_URL` (default `https://api.crowdsource.sh`) and
     /// `CROWDSOURCE_API_KEY` (optional).
     pub fn from_env() -> Result<Self, CrowdsourceError> {
-        let base =
-            std::env::var("CROWDSOURCE_SERVER_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        let base = std::env::var("CROWDSOURCE_SERVER_URL")
+            .unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
         let key = std::env::var("CROWDSOURCE_API_KEY").ok();
         Self::new(base, key)
     }
 
     fn build(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
-        let mut req = self.http.request(method, format!("{}{}", self.base_url, path));
+        let mut req = self
+            .http
+            .request(method, format!("{}{}", self.base_url, path));
         // Bearer (session JWT) takes precedence; otherwise the API key.
         if let Some(token) = &self.bearer {
             req = req.bearer_auth(token);
@@ -127,7 +129,8 @@ impl Client {
                     return parse_response(status, &bytes);
                 }
                 Err(e) => {
-                    if attempt < MAX_ATTEMPTS && (e.is_timeout() || e.is_connect() || e.is_request())
+                    if attempt < MAX_ATTEMPTS
+                        && (e.is_timeout() || e.is_connect() || e.is_request())
                     {
                         tokio::time::sleep(backoff(attempt)).await;
                         attempt += 1;
@@ -190,11 +193,8 @@ impl Client {
 
     /// `PATCH /v1/me` — update the caller's profile (display name, avatar).
     pub async fn update_me(&self, req: &UpdateMe) -> Result<Me, CrowdsourceError> {
-        self.exec(
-            self.build(Method::PATCH, &format!("{API_V1}/me"))
-                .json(req),
-        )
-        .await
+        self.exec(self.build(Method::PATCH, &format!("{API_V1}/me")).json(req))
+            .await
     }
 
     /// `GET /v1/me/credits` — credit balance.
@@ -276,8 +276,11 @@ impl Client {
 
     /// `GET /v1/competitions/:id/leaderboard`.
     pub async fn leaderboard(&self, id: Uuid) -> Result<LeaderboardResponse, CrowdsourceError> {
-        self.exec_get(self.build(Method::GET, &format!("{API_V1}/competitions/{id}/leaderboard")))
-            .await
+        self.exec_get(self.build(
+            Method::GET,
+            &format!("{API_V1}/competitions/{id}/leaderboard"),
+        ))
+        .await
     }
 
     // ---- predictions / submissions ----

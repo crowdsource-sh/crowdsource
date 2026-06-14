@@ -91,7 +91,10 @@ impl Client {
     }
 
     fn credit_balance(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let res = self.rt.block_on(self.inner.credit_balance()).map_err(pyerr)?;
+        let res = self
+            .rt
+            .block_on(self.inner.credit_balance())
+            .map_err(pyerr)?;
         to_py(py, &res)
     }
 
@@ -220,7 +223,10 @@ impl Client {
     // ---- api keys ----
 
     fn list_api_keys(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let res = self.rt.block_on(self.inner.list_api_keys()).map_err(pyerr)?;
+        let res = self
+            .rt
+            .block_on(self.inner.list_api_keys())
+            .map_err(pyerr)?;
         to_py(py, &res)
     }
 
@@ -235,7 +241,9 @@ impl Client {
 
     fn delete_api_key(&self, id: String) -> PyResult<()> {
         let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        self.rt.block_on(self.inner.delete_api_key(id)).map_err(pyerr)
+        self.rt
+            .block_on(self.inner.delete_api_key(id))
+            .map_err(pyerr)
     }
 
     // ---- data sources ----

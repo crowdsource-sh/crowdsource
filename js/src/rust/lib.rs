@@ -287,7 +287,12 @@ impl Client {
     pub fn create_checkout(&self, amount_cents: f64) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async move {
-            to_js(&inner.create_checkout(amount_cents as i64).await.map_err(err)?)
+            to_js(
+                &inner
+                    .create_checkout(amount_cents as i64)
+                    .await
+                    .map_err(err)?,
+            )
         })
     }
 }

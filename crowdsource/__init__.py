@@ -1,4 +1,4 @@
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Re-export the compiled pyo3 client so `from crowdsource import Client` works.
 # Guarded so the pure-Python CLI helpers remain importable even when the native

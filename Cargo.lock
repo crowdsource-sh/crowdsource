@@ -110,7 +110,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "crowdsource"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "reqwest",
@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "crowdsource_js"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crowdsource",
  "getrandom 0.2.17",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "crowdsource_py"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crowdsource",
  "pyo3",
