@@ -158,6 +158,11 @@ packages = [
     "Cargo.lock",
 ]
 exclude = [
+    "crowdsource/*.dll",
+    "crowdsource/*.dylib",
+    "crowdsource/*.so",
+    "crowdsource/extension",
+    "js/dist",
     "js/node_modules",
     "rust/Makefile",
     "target",
@@ -166,6 +171,9 @@ exclude = [
 [tool.hatch.build.targets.wheel]
 packages = [
     "crowdsource",
+]
+artifacts = [
+    "crowdsource/extension/**/*",
 ]
 exclude = [
     "js",
