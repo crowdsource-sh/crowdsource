@@ -184,6 +184,21 @@ pub struct Submission {
     pub payout: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub scored_at: Option<DateTime<Utc>>,
+    /// Set when the entry was voluntarily withdrawn (refunded, excluded from
+    /// scoring, and not resubmittable). `#[serde(default)]` for forward-compat
+    /// with servers that predate retraction.
+    #[serde(default)]
+    pub retracted_at: Option<DateTime<Utc>>,
+}
+
+/// Result of retracting a submission (`POST /v1/competitions/:id/submissions/retract`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetractSubmission {
+    pub submission_id: String,
+    /// Credits refunded (the per-submission fee).
+    pub refunded: i64,
+    /// The caller's resulting credit balance.
+    pub balance: i64,
 }
 
 /// Body for creating a submission. Provide exactly one of `s3_key` (a key

@@ -10,7 +10,7 @@ use crate::models::{
     ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionListResponse,
     CompetitionQuery, CreateApiKey, CreateApiKeyResponse, CreateCompetition, CreateDataSource,
     CreateSubmission, CreditBalance, DataSource, EconomicConfigResponse, EventsResponse,
-    LeaderboardResponse, Me, Org, RankTransition, Submission, Summary, UpdateMe,
+    LeaderboardResponse, Me, Org, RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
 };
 use reqwest::Method;
 use serde::de::DeserializeOwned;
@@ -319,6 +319,20 @@ impl Client {
     pub async fn list_my_submissions(&self) -> Result<Vec<Submission>, CrowdsourceError> {
         self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/submissions")))
             .await
+    }
+
+    /// `POST /v1/competitions/:id/submissions/retract` — withdraw the caller's
+    /// entry from an open competition, refunding the submission fee. The user is
+    /// then blocked from resubmitting to that competition (iteration).
+    pub async fn retract_submission(
+        &self,
+        competition_id: Uuid,
+    ) -> Result<RetractSubmission, CrowdsourceError> {
+        self.exec(self.build(
+            Method::POST,
+            &format!("{API_V1}/competitions/{competition_id}/submissions/retract"),
+        ))
+        .await
     }
 
     // ---- api keys ----

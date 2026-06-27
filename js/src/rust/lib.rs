@@ -216,6 +216,17 @@ impl Client {
         future_to_promise(async move { to_js(&inner.list_my_submissions().await.map_err(err)?) })
     }
 
+    /// `retractSubmission(competitionId)` — withdraw the caller's entry, refunding
+    /// the fee. Blocks resubmission to that competition.
+    #[wasm_bindgen(js_name = retractSubmission)]
+    pub fn retract_submission(&self, competition_id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let cid = Uuid::parse_str(&competition_id).map_err(|e| error(&e.to_string()))?;
+            to_js(&inner.retract_submission(cid).await.map_err(err)?)
+        })
+    }
+
     // ---- api keys ----
 
     /// `listApiKeys()`.

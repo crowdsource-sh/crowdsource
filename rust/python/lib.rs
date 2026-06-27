@@ -220,6 +220,16 @@ impl Client {
         to_py(py, &res)
     }
 
+    fn retract_submission(&self, py: Python<'_>, competition_id: String) -> PyResult<Py<PyAny>> {
+        let cid =
+            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.retract_submission(cid))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
     // ---- api keys ----
 
     fn list_api_keys(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
