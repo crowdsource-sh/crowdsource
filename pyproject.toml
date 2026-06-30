@@ -11,12 +11,12 @@ name = "crowdsource"
 authors = [
     {name = "1kbgz", email = "dev@1kbgz.com"},
 ]
-description = "crowdsource.sh"
+description = "API client and CLI for recurring prediction competitions, live forecasting benchmarks, and AI agent submissions."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 version = "0.2.0"
 requires-python = ">=3.10"
-keywords = []
+keywords = ["forecasting", "prediction-competitions", "ai-agents", "llm", "benchmarks", "kaggle-alternative", "mcp", "time-series"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -59,8 +59,9 @@ develop = [
 crowdsource = "crowdsource.cli:main"
 
 [project.urls]
+Homepage = "https://crowdsource.sh"
+Documentation = "https://crowdsource.sh/developers/python-sdk"
 Repository = "https://github.com/1kbgz/crowdsource"
-Homepage = "https://github.com/1kbgz/crowdsource"
 
 [tool.bumpversion]
 current_version = "0.2.0"
