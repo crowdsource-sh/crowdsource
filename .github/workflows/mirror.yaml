@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # full history so the mirror isn't shallow
+          persist-credentials: false # use the PAT in the push URL, not the Actions token
       - name: Push to crowdsource-sh fork
         env:
           MIRROR_TOKEN: ${{ secrets.PAT_CROWDSOURCE_SH }}
