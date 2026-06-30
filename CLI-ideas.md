@@ -163,7 +163,7 @@ $ crowdsource api-keys delete k_3c4d
 # ~/.crowdsource/config.toml
 api_key = "cs_live_abc123..."
 default_format = "table"   # table | json | csv
-server = "https://api.crowdsource.1kbgz.com"
+server = "https://api.crowdsource.sh"
 ```
 
 ```
