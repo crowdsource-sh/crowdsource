@@ -1,0 +1,37 @@
+name: mirror
+
+# Mirror main to this repo's public fork in the crowdsource-sh org. On every push
+# (instant) plus a daily backstop (catches bot/GITHUB_TOKEN commits that don't
+# raise push events). Uses the 1kbgz org secret PAT_CROWDSOURCE_SH — a fine-grained
+# PAT whose resource owner is crowdsource-sh with Contents + Workflows: write.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 7 * * *" # daily 07:23 UTC backstop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the mirror isn't shallow
+      - name: Push to crowdsource-sh fork
+        env:
+          MIRROR_TOKEN: ${{ secrets.PAT_CROWDSOURCE_SH }}
+        run: |
+          if [ -z "$MIRROR_TOKEN" ]; then
+            echo "PAT_CROWDSOURCE_SH not set — skipping."
+            exit 0
+          fi
+          repo="${GITHUB_REPOSITORY##*/}"
+          git push --force "https://x-access-token:${MIRROR_TOKEN}@github.com/crowdsource-sh/${repo}.git" HEAD:main
