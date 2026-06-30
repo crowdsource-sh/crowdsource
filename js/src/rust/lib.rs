@@ -118,6 +118,8 @@ impl Client {
         mine: Option<bool>,
         hosted: Option<bool>,
         tag: Option<String>,
+        needs_resolution: Option<bool>,
+        sort: Option<String>,
     ) -> Promise {
         let inner = self.inner.clone();
         future_to_promise(async move {
@@ -129,6 +131,8 @@ impl Client {
                 mine,
                 hosted,
                 tag,
+                needs_resolution,
+                sort,
             };
             to_js(&inner.list_competitions(&query).await.map_err(err)?)
         })
@@ -182,6 +186,86 @@ impl Client {
         future_to_promise(async move {
             let id = Uuid::parse_str(&id).map_err(|e| error(&e.to_string()))?;
             to_js(&inner.leaderboard(id).await.map_err(err)?)
+        })
+    }
+
+    /// `inputSource(id)` — the public input data source.
+    #[wasm_bindgen(js_name = inputSource)]
+    pub fn input_source(&self, id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&id).map_err(|e| error(&e.to_string()))?;
+            to_js(&inner.input_source(id).await.map_err(err)?)
+        })
+    }
+
+    /// `competitionIndex(id)` — row keys to predict + target shape.
+    #[wasm_bindgen(js_name = competitionIndex)]
+    pub fn competition_index(&self, id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&id).map_err(|e| error(&e.to_string()))?;
+            to_js(&inner.competition_index(id).await.map_err(err)?)
+        })
+    }
+
+    /// `competitionIndexTemplate(id)` — a `key,value` CSV template (string).
+    #[wasm_bindgen(js_name = competitionIndexTemplate)]
+    pub fn competition_index_template(&self, id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&id).map_err(|e| error(&e.to_string()))?;
+            let csv = inner.competition_index_template(id).await.map_err(err)?;
+            Ok(JsValue::from_str(&csv))
+        })
+    }
+
+    // ---- datasets / resolution (tabular) ----
+
+    /// `inferSchema({ file?, filename?, url?, format?, authHeader? })` — infer a
+    /// dataset spec from an uploaded file (`file` = Uint8Array + `filename`) or a
+    /// `url`. Returns the raw inference response.
+    #[wasm_bindgen(js_name = inferSchema)]
+    pub fn infer_schema(
+        &self,
+        file: Option<Vec<u8>>,
+        filename: Option<String>,
+        url: Option<String>,
+        format: Option<String>,
+        auth_header: Option<String>,
+    ) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let file = file.map(|b| (filename.unwrap_or_else(|| "upload".into()), b));
+            to_js(
+                &inner
+                    .infer_schema(file, url, format, auth_header)
+                    .await
+                    .map_err(err)?,
+            )
+        })
+    }
+
+    /// `resolutionFile(id, filename, bytes, indexColumn?, targetColumn?, format?)`
+    /// — manually resolve a closed competition from an uploaded results file.
+    #[wasm_bindgen(js_name = resolutionFile)]
+    pub fn resolution_file(
+        &self,
+        id: String,
+        filename: String,
+        bytes: Vec<u8>,
+        index_column: Option<String>,
+        target_column: Option<String>,
+        format: Option<String>,
+    ) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&id).map_err(|e| error(&e.to_string()))?;
+            inner
+                .resolution_file(id, filename, bytes, index_column, target_column, format)
+                .await
+                .map_err(err)?;
+            Ok(JsValue::UNDEFINED)
         })
     }
 

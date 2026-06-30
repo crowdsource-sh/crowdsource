@@ -106,7 +106,7 @@ impl Client {
 
     // ---- competitions ----
 
-    #[pyo3(signature = (status=None, competition_type=None, limit=None, offset=None, mine=None, hosted=None, tag=None))]
+    #[pyo3(signature = (status=None, competition_type=None, limit=None, offset=None, mine=None, hosted=None, tag=None, needs_resolution=None, sort=None))]
     #[allow(clippy::too_many_arguments)]
     fn list_competitions(
         &self,
@@ -118,6 +118,8 @@ impl Client {
         mine: Option<bool>,
         hosted: Option<bool>,
         tag: Option<String>,
+        needs_resolution: Option<bool>,
+        sort: Option<String>,
     ) -> PyResult<Py<PyAny>> {
         let query = CompetitionQuery {
             status: status.and_then(|s| parse_enum::<CompetitionStatus>(&s)),
@@ -127,6 +129,8 @@ impl Client {
             mine,
             hosted,
             tag,
+            needs_resolution,
+            sort,
         };
         let res = self
             .rt
@@ -179,6 +183,81 @@ impl Client {
             .block_on(self.inner.leaderboard(id))
             .map_err(pyerr)?;
         to_py(py, &res)
+    }
+
+    /// `input_source(id)` — the public input data source.
+    fn input_source(&self, py: Python<'_>, id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.input_source(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    /// `competition_index(id)` — row keys to predict + target shape.
+    fn competition_index(&self, py: Python<'_>, id: String) -> PyResult<Py<PyAny>> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.competition_index(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    /// `competition_index_template(id)` — a `key,value` CSV template string.
+    fn competition_index_template(&self, id: String) -> PyResult<String> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.rt
+            .block_on(self.inner.competition_index_template(id))
+            .map_err(pyerr)
+    }
+
+    // ---- datasets / resolution (tabular) ----
+
+    /// `infer_schema(file=None, filename=None, url=None, format=None, auth_header=None)`
+    /// — infer a dataset spec from file bytes (+ `filename`) or a `url`.
+    #[pyo3(signature = (file=None, filename=None, url=None, format=None, auth_header=None))]
+    fn infer_schema(
+        &self,
+        py: Python<'_>,
+        file: Option<Vec<u8>>,
+        filename: Option<String>,
+        url: Option<String>,
+        format: Option<String>,
+        auth_header: Option<String>,
+    ) -> PyResult<Py<PyAny>> {
+        let file = file.map(|b| (filename.unwrap_or_else(|| "upload".into()), b));
+        let res = self
+            .rt
+            .block_on(self.inner.infer_schema(file, url, format, auth_header))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    /// `resolution_file(id, filename, bytes, index_column=None, target_column=None, format=None)`
+    /// — manually resolve a closed competition from an uploaded results file.
+    #[pyo3(signature = (id, filename, bytes, index_column=None, target_column=None, format=None))]
+    fn resolution_file(
+        &self,
+        id: String,
+        filename: String,
+        bytes: Vec<u8>,
+        index_column: Option<String>,
+        target_column: Option<String>,
+        format: Option<String>,
+    ) -> PyResult<()> {
+        let id = Uuid::parse_str(&id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.rt
+            .block_on(self.inner.resolution_file(
+                id,
+                filename,
+                bytes,
+                index_column,
+                target_column,
+                format,
+            ))
+            .map_err(pyerr)
     }
 
     // ---- predictions / submissions ----

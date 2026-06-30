@@ -7,10 +7,11 @@
 
 use crate::error::{CrowdsourceError, ProblemDetails};
 use crate::models::{
-    ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionListResponse,
-    CompetitionQuery, CreateApiKey, CreateApiKeyResponse, CreateCompetition, CreateDataSource,
-    CreateSubmission, CreditBalance, DataSource, EconomicConfigResponse, EventsResponse,
-    LeaderboardResponse, Me, Org, RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
+    ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
+    CompetitionListResponse, CompetitionQuery, CreateApiKey, CreateApiKeyResponse,
+    CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DataSource,
+    EconomicConfigResponse, EventsResponse, LeaderboardResponse, Me, Org, RankTransition,
+    RetractSubmission, Submission, Summary, UpdateMe,
 };
 use reqwest::Method;
 use serde::de::DeserializeOwned;
@@ -150,6 +151,30 @@ impl Client {
         self.exec(req).await
     }
 
+    /// Execute a write whose success carries no (or an ignorable) body; maps a
+    /// non-2xx into the RFC 7807 error.
+    async fn exec_ok(&self, req: reqwest::RequestBuilder) -> Result<(), CrowdsourceError> {
+        let res = req.send().await?;
+        let status = res.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let bytes = res.bytes().await?;
+        parse_response::<serde_json::Value>(status, &bytes).map(|_| ())
+    }
+
+    /// Execute a GET returning the raw text body (e.g. a CSV template).
+    async fn exec_text(&self, req: reqwest::RequestBuilder) -> Result<String, CrowdsourceError> {
+        let res = req.send().await?;
+        let status = res.status();
+        let bytes = res.bytes().await?;
+        if status.is_success() {
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        } else {
+            parse_response::<serde_json::Value>(status, &bytes).map(|_| String::new())
+        }
+    }
+
     // ---- health / identity ----
 
     /// `GET /health` — liveness probe. Returns the raw JSON body.
@@ -238,6 +263,12 @@ impl Client {
         if let Some(tag) = &query.tag {
             params.push(("tag", tag.clone()));
         }
+        if query.needs_resolution == Some(true) {
+            params.push(("needs_resolution", "true".to_string()));
+        }
+        if let Some(sort) = &query.sort {
+            params.push(("sort", sort.clone()));
+        }
         let req = self
             .build(Method::GET, &format!("{API_V1}/competitions"))
             .query(&params);
@@ -280,6 +311,102 @@ impl Client {
             Method::GET,
             &format!("{API_V1}/competitions/{id}/leaderboard"),
         ))
+        .await
+    }
+
+    /// `GET /v1/competitions/:id/input-source` — the public input data source
+    /// participants predict on (the resolution source is never exposed here).
+    pub async fn input_source(&self, id: Uuid) -> Result<DataSource, CrowdsourceError> {
+        self.exec_get(self.build(
+            Method::GET,
+            &format!("{API_V1}/competitions/{id}/input-source"),
+        ))
+        .await
+    }
+
+    /// `GET /v1/competitions/:id/index` — the row keys to predict + target shape.
+    /// `dynamic` indices are fetched live from the input source server-side.
+    pub async fn competition_index(&self, id: Uuid) -> Result<CompetitionIndex, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/competitions/{id}/index")))
+            .await
+    }
+
+    /// `GET /v1/competitions/:id/index?format=csv` — a `key,value` CSV template
+    /// pre-filled with the current keys (blank values) for bulk submission.
+    pub async fn competition_index_template(&self, id: Uuid) -> Result<String, CrowdsourceError> {
+        self.exec_text(
+            self.build(Method::GET, &format!("{API_V1}/competitions/{id}/index"))
+                .query(&[("format", "csv")]),
+        )
+        .await
+    }
+
+    // ---- datasets / resolution (tabular) ----
+
+    /// `POST /v1/datasets/infer-schema` — infer a dataset spec from an uploaded
+    /// file (`(filename, bytes)`) or a `url`. Returns the raw inference response
+    /// (proposed spec, inferred columns, index/target candidates, index keys).
+    pub async fn infer_schema(
+        &self,
+        file: Option<(String, Vec<u8>)>,
+        url: Option<String>,
+        format: Option<String>,
+        auth_header: Option<String>,
+    ) -> Result<serde_json::Value, CrowdsourceError> {
+        let mut parts = Vec::new();
+        if let Some((name, bytes)) = file {
+            parts.push(MultipartPart::File("file".into(), name, bytes));
+        }
+        if let Some(u) = url {
+            parts.push(MultipartPart::Field("url".into(), u));
+        }
+        if let Some(f) = format {
+            parts.push(MultipartPart::Field("format".into(), f));
+        }
+        if let Some(a) = auth_header {
+            parts.push(MultipartPart::Field("auth_header".into(), a));
+        }
+        let (content_type, body) = build_multipart(&parts);
+        self.exec(
+            self.build(Method::POST, &format!("{API_V1}/datasets/infer-schema"))
+                .header("Content-Type", content_type)
+                .body(body),
+        )
+        .await
+    }
+
+    /// `POST /v1/competitions/:id/resolution-file` — manually resolve a closed
+    /// competition by uploading a results file. `index_column`/`target_column`/
+    /// `format` override the dataset spec's defaults. The file is parsed + scored
+    /// server-side and discarded.
+    pub async fn resolution_file(
+        &self,
+        id: Uuid,
+        filename: String,
+        bytes: Vec<u8>,
+        index_column: Option<String>,
+        target_column: Option<String>,
+        format: Option<String>,
+    ) -> Result<(), CrowdsourceError> {
+        let mut parts = vec![MultipartPart::File("file".into(), filename, bytes)];
+        if let Some(c) = index_column {
+            parts.push(MultipartPart::Field("index_column".into(), c));
+        }
+        if let Some(c) = target_column {
+            parts.push(MultipartPart::Field("target_column".into(), c));
+        }
+        if let Some(f) = format {
+            parts.push(MultipartPart::Field("format".into(), f));
+        }
+        let (content_type, body) = build_multipart(&parts);
+        self.exec_ok(
+            self.build(
+                Method::POST,
+                &format!("{API_V1}/competitions/{id}/resolution-file"),
+            )
+            .header("Content-Type", content_type)
+            .body(body),
+        )
         .await
     }
 
@@ -421,6 +548,45 @@ impl Client {
         )
         .await
     }
+}
+
+/// A `multipart/form-data` boundary unlikely to occur in field/file content.
+const MP_BOUNDARY: &str = "----crowdsourceSdkBoundaryQ9z1XoQ9z1Xo";
+
+/// One part of a multipart body: a text field or an uploaded file.
+enum MultipartPart {
+    Field(String, String),
+    File(String, String, Vec<u8>),
+}
+
+/// Build a `multipart/form-data` body by hand (reqwest's `multipart` feature is
+/// off, and this is portable across the native + browser-fetch backends).
+/// Returns the `Content-Type` header value and the raw body bytes.
+fn build_multipart(parts: &[MultipartPart]) -> (String, Vec<u8>) {
+    let mut body: Vec<u8> = Vec::new();
+    for part in parts {
+        body.extend_from_slice(format!("--{MP_BOUNDARY}\r\n").as_bytes());
+        match part {
+            MultipartPart::Field(name, value) => {
+                body.extend_from_slice(
+                    format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
+                );
+                body.extend_from_slice(value.as_bytes());
+            }
+            MultipartPart::File(name, filename, bytes) => {
+                body.extend_from_slice(
+                    format!(
+                        "Content-Disposition: form-data; name=\"{name}\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+                    )
+                    .as_bytes(),
+                );
+                body.extend_from_slice(bytes);
+            }
+        }
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{MP_BOUNDARY}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={MP_BOUNDARY}"), body)
 }
 
 /// Turn a finished HTTP response (status + body bytes) into a typed result,

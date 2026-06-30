@@ -170,6 +170,32 @@ pub struct CompetitionQuery {
     pub hosted: Option<bool>,
     /// Filter to a single tag.
     pub tag: Option<String>,
+    /// `needs_resolution=true` — the caller org's closed, manual (no oracle URL),
+    /// unresolved competitions (the resolution queue).
+    pub needs_resolution: Option<bool>,
+    /// Sort order: `created` (default), `ending`, `fee`, `bounty`.
+    pub sort: Option<String>,
+}
+
+/// The submission index for a competition (`GET /v1/competitions/:id/index`):
+/// the row keys participants predict, plus the target shape. For a `dynamic`
+/// index the keys are fetched live from the input source.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompetitionIndex {
+    /// The dataset-spec index column (the key participants predict for).
+    pub index_column: String,
+    /// `fixed` (stored keys) or `dynamic` (fetched from the input source).
+    pub mode: String,
+    /// `number` (regression) or `class` (classification).
+    pub target_kind: String,
+    /// Allowed labels when `target_kind == "class"`.
+    #[serde(default)]
+    pub classes: Option<Vec<String>>,
+    /// Number of keys in the index.
+    pub count: i64,
+    /// The current row keys (capped server-side).
+    #[serde(default)]
+    pub keys: Vec<String>,
 }
 
 /// A prediction submission (`POST /v1/competitions/:id/submissions`).
