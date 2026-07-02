@@ -103,4 +103,5 @@ This is a polyglot repo — one Rust core (`rust/`) with wasm (`js/`) and pyo3
 [AGENTS.md](AGENTS.md) and the `Makefile` (`make develop`, `make build`,
 `make test`, `make lint`).
 
-> Generated from the [Base Python Project Template](https://github.com/python-project-templates/base) via [copier](https://copier.readthedocs.io/en/stable/).
+> [!NOTE]
+> This library was generated using [copier](https://copier.readthedocs.io/en/stable/) from the [Base Python Project Template repository](https://github.com/python-project-templates/base).
