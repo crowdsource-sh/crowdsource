@@ -540,3 +540,50 @@ pub struct EconomicConfigResponse {
     pub version: i64,
     pub config: EconomicConfig,
 }
+
+/// A public user profile (`GET /v1/users/{handle}`) — public fields only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicProfile {
+    pub id: String,
+    pub handle: String,
+    pub display_name: Option<String>,
+    /// Resolved seed for the deterministic generated avatar.
+    pub avatar_seed: String,
+    pub rank_tier: String,
+    pub rank_level: i32,
+    pub member_since: String,
+    pub stats: PublicStats,
+    pub leaderboard: PublicLeaderboard,
+    pub badges: Vec<ProfileBadge>,
+}
+
+/// Headline public stats on a profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicStats {
+    pub competitions_entered: i64,
+    pub competitions_hosted: i64,
+    pub earned_credits: i64,
+    pub scored_count: i64,
+    pub win_count: i64,
+    pub top3_count: i64,
+    pub points: f64,
+}
+
+/// A profile's leaderboard standing (lifetime).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicLeaderboard {
+    pub ranked: bool,
+    pub provisional: bool,
+    pub global_rank: Option<i64>,
+    pub global_total: i64,
+    pub tier_rank: Option<i64>,
+    pub tier_total: i64,
+}
+
+/// An earned badge shown on a profile (empty until the badge system ships).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileBadge {
+    pub slug: String,
+    pub name: String,
+    pub icon: String,
+}

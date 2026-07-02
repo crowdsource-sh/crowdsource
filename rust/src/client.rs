@@ -10,8 +10,8 @@ use crate::models::{
     ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
     CompetitionListResponse, CompetitionQuery, CreateApiKey, CreateApiKeyResponse,
     CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DataSource,
-    EconomicConfigResponse, EventsResponse, LeaderboardResponse, Me, Org, RankTransition,
-    RetractSubmission, Submission, Summary, UpdateMe,
+    EconomicConfigResponse, EventsResponse, LeaderboardResponse, Me, Org, PublicProfile,
+    RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
 };
 use reqwest::Method;
 use serde::de::DeserializeOwned;
@@ -225,6 +225,12 @@ impl Client {
     /// `GET /v1/me/credits` — credit balance.
     pub async fn credit_balance(&self) -> Result<CreditBalance, CrowdsourceError> {
         self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/credits")))
+            .await
+    }
+
+    /// `GET /v1/users/{handle}` — a user's public profile (no auth required).
+    pub async fn profile(&self, handle: &str) -> Result<PublicProfile, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/users/{handle}")))
             .await
     }
 

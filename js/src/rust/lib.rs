@@ -94,6 +94,13 @@ impl Client {
         future_to_promise(async move { to_js(&inner.credit_balance().await.map_err(err)?) })
     }
 
+    /// `profile(handle)` — a user's public profile.
+    #[wasm_bindgen(js_name = profile)]
+    pub fn profile(&self, handle: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move { to_js(&inner.profile(&handle).await.map_err(err)?) })
+    }
+
     /// `getOrg(id)`.
     #[wasm_bindgen(js_name = getOrg)]
     pub fn get_org(&self, id: String) -> Promise {

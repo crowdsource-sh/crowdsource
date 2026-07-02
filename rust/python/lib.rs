@@ -98,6 +98,15 @@ impl Client {
         to_py(py, &res)
     }
 
+    /// A user's public profile by handle.
+    fn profile(&self, py: Python<'_>, handle: &str) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.profile(handle))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
     fn get_org(&self, py: Python<'_>, org_id: String) -> PyResult<Py<PyAny>> {
         let id = Uuid::parse_str(&org_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let res = self.rt.block_on(self.inner.get_org(id)).map_err(pyerr)?;
