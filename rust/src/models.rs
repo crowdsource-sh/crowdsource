@@ -112,6 +112,13 @@ pub struct Competition {
     /// approved/invited/denied), when authenticated.
     #[serde(default)]
     pub my_access: Option<String>,
+    /// Why a `scoring_failed` competition voided: `no_participation` |
+    /// `threshold` | `oracle_error` | `market_closed`.
+    #[serde(default)]
+    pub failure_reason: Option<String>,
+    /// Scored participant count, stamped at resolution.
+    #[serde(default)]
+    pub participant_count: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
