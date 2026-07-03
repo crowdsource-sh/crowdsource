@@ -590,3 +590,12 @@ pub struct ProfileBadge {
     pub name: String,
     pub icon: String,
 }
+
+/// Result of gifting credits to another user (`POST /v1/credits/gift`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GiftResponse {
+    pub recipient_handle: String,
+    pub amount: i64,
+    /// The sender's balance after the gift.
+    pub balance: i64,
+}

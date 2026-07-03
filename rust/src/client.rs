@@ -10,8 +10,8 @@ use crate::models::{
     ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
     CompetitionListResponse, CompetitionQuery, CreateApiKey, CreateApiKeyResponse,
     CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DataSource,
-    EconomicConfigResponse, EventsResponse, LeaderboardResponse, Me, Org, PublicProfile,
-    RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
+    EconomicConfigResponse, EventsResponse, GiftResponse, LeaderboardResponse, Me, Org,
+    PublicProfile, RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
 };
 use reqwest::Method;
 use serde::de::DeserializeOwned;
@@ -232,6 +232,25 @@ impl Client {
     pub async fn profile(&self, handle: &str) -> Result<PublicProfile, CrowdsourceError> {
         self.exec_get(self.build(Method::GET, &format!("{API_V1}/users/{handle}")))
             .await
+    }
+
+    /// `POST /v1/credits/gift` — gift credits to another user by handle.
+    pub async fn gift_credits(
+        &self,
+        recipient_handle: &str,
+        amount: i64,
+        message: Option<&str>,
+    ) -> Result<GiftResponse, CrowdsourceError> {
+        let body = serde_json::json!({
+            "recipient_handle": recipient_handle,
+            "amount": amount,
+            "message": message,
+        });
+        self.exec(
+            self.build(Method::POST, &format!("{API_V1}/credits/gift"))
+                .json(&body),
+        )
+        .await
     }
 
     /// `GET /v1/orgs/:id`.

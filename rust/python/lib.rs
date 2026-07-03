@@ -107,6 +107,22 @@ impl Client {
         to_py(py, &res)
     }
 
+    /// Gift credits to another user by handle.
+    #[pyo3(signature = (recipient_handle, amount, message=None))]
+    fn gift_credits(
+        &self,
+        py: Python<'_>,
+        recipient_handle: &str,
+        amount: i64,
+        message: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.gift_credits(recipient_handle, amount, message))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
     fn get_org(&self, py: Python<'_>, org_id: String) -> PyResult<Py<PyAny>> {
         let id = Uuid::parse_str(&org_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let res = self.rt.block_on(self.inner.get_org(id)).map_err(pyerr)?;

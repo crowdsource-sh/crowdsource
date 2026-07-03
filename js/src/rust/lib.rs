@@ -101,6 +101,25 @@ impl Client {
         future_to_promise(async move { to_js(&inner.profile(&handle).await.map_err(err)?) })
     }
 
+    /// `giftCredits(recipientHandle, amount, message?)` — gift credits to a user.
+    #[wasm_bindgen(js_name = giftCredits)]
+    pub fn gift_credits(
+        &self,
+        recipient_handle: String,
+        amount: f64,
+        message: Option<String>,
+    ) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            to_js(
+                &inner
+                    .gift_credits(&recipient_handle, amount as i64, message.as_deref())
+                    .await
+                    .map_err(err)?,
+            )
+        })
+    }
+
     /// `getOrg(id)`.
     #[wasm_bindgen(js_name = getOrg)]
     pub fn get_org(&self, id: String) -> Promise {
