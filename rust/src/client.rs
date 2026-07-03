@@ -7,7 +7,7 @@
 
 use crate::error::{CrowdsourceError, ProblemDetails};
 use crate::models::{
-    ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
+    AccessRow, ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
     CompetitionListResponse, CompetitionQuery, CreateApiKey, CreateApiKeyResponse,
     CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DataSource,
     EconomicConfigResponse, EventsResponse, GiftResponse, LeaderboardResponse, Me, Org,
@@ -232,6 +232,47 @@ impl Client {
     pub async fn profile(&self, handle: &str) -> Result<PublicProfile, CrowdsourceError> {
         self.exec_get(self.build(Method::GET, &format!("{API_V1}/users/{handle}")))
             .await
+    }
+
+    /// `POST /v1/competitions/{id}/access/request` — request access to a
+    /// restricted competition (the host then approves or denies).
+    pub async fn request_access(&self, competition_id: Uuid) -> Result<(), CrowdsourceError> {
+        self.exec_ok(self.build(
+            Method::POST,
+            &format!("{API_V1}/competitions/{competition_id}/access/request"),
+        ))
+        .await
+    }
+
+    /// `POST /v1/competitions/{id}/access` — host: `invite` | `approve` | `deny`
+    /// a user by handle.
+    pub async fn manage_access(
+        &self,
+        competition_id: Uuid,
+        handle: &str,
+        action: &str,
+    ) -> Result<(), CrowdsourceError> {
+        let body = serde_json::json!({ "handle": handle, "action": action });
+        self.exec_ok(
+            self.build(
+                Method::POST,
+                &format!("{API_V1}/competitions/{competition_id}/access"),
+            )
+            .json(&body),
+        )
+        .await
+    }
+
+    /// `GET /v1/competitions/{id}/access` — host: list access requests + grants.
+    pub async fn list_access(
+        &self,
+        competition_id: Uuid,
+    ) -> Result<Vec<AccessRow>, CrowdsourceError> {
+        self.exec_get(self.build(
+            Method::GET,
+            &format!("{API_V1}/competitions/{competition_id}/access"),
+        ))
+        .await
     }
 
     /// `POST /v1/credits/gift` — gift credits to another user by handle.

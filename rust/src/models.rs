@@ -102,8 +102,22 @@ pub struct Competition {
     pub min_participants: Option<i32>,
     #[serde(default)]
     pub min_score: Option<f64>,
+    /// Join mode: `public` (default), `restricted`, or `invite`.
+    #[serde(default = "default_public")]
+    pub access_mode: String,
+    /// Hidden from browse / get-by-id for non-owner/non-invited.
+    #[serde(default)]
+    pub unlisted: bool,
+    /// The caller's access relationship to a non-public comp (owner/requested/
+    /// approved/invited/denied), when authenticated.
+    #[serde(default)]
+    pub my_access: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_public() -> String {
+    "public".to_string()
 }
 
 /// Body for `POST /v1/competitions`. Optional fields are omitted when `None`.
@@ -148,6 +162,12 @@ pub struct CreateCompetition {
     pub min_participants: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_score: Option<f64>,
+    /// Join mode: `public` (default), `restricted`, or `invite`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_mode: Option<String>,
+    /// Hide from browse / get-by-id (private). Only for non-public modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlisted: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -598,4 +618,15 @@ pub struct GiftResponse {
     pub amount: i64,
     /// The sender's balance after the gift.
     pub balance: i64,
+}
+
+/// A competition access row (`GET /v1/competitions/{id}/access`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessRow {
+    pub user_id: String,
+    pub handle: Option<String>,
+    pub display_name: Option<String>,
+    /// `requested` | `approved` | `invited` | `denied`.
+    pub status: String,
+    pub created_at: String,
 }
