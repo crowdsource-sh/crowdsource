@@ -551,6 +551,9 @@ pub struct PublicProfile {
     pub avatar_seed: String,
     pub rank_tier: String,
     pub rank_level: i32,
+    /// `admin` / `staff` for platform operators (else absent).
+    #[serde(default)]
+    pub staff: Option<String>,
     pub member_since: String,
     pub stats: PublicStats,
     pub leaderboard: PublicLeaderboard,
