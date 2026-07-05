@@ -108,6 +108,9 @@ pub struct Competition {
     /// Hidden from browse / get-by-id for non-owner/non-invited.
     #[serde(default)]
     pub unlisted: bool,
+    /// Reject submissions within this many seconds of `end_date` (0 = none).
+    #[serde(default)]
+    pub close_window_seconds: i32,
     /// The caller's access relationship to a non-public comp (owner/requested/
     /// approved/invited/denied), when authenticated.
     #[serde(default)]
@@ -175,6 +178,9 @@ pub struct CreateCompetition {
     /// Hide from browse / get-by-id (private). Only for non-public modes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unlisted: Option<bool>,
+    /// Reject submissions within this many seconds of `end_date` (0 = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_window_seconds: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
