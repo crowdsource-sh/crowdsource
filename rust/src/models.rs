@@ -299,6 +299,18 @@ pub struct CreditBalance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyStreak {
+    pub enabled: bool,
+    pub current: i32,
+    pub longest: i32,
+    pub today_complete: bool,
+    #[serde(default)]
+    pub last_qualified_date: Option<String>,
+    #[serde(default)]
+    pub next_milestone: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Me {
     pub id: Uuid,
     pub email: String,

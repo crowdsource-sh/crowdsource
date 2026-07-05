@@ -9,7 +9,7 @@ use crate::error::{CrowdsourceError, ProblemDetails};
 use crate::models::{
     AccessRow, ApiKey, CheckoutRequest, CheckoutResponse, Competition, CompetitionIndex,
     CompetitionListResponse, CompetitionQuery, CreateApiKey, CreateApiKeyResponse,
-    CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DataSource,
+    CreateCompetition, CreateDataSource, CreateSubmission, CreditBalance, DailyStreak, DataSource,
     EconomicConfigResponse, EventsResponse, GiftResponse, LeaderboardResponse, Me, Org,
     PublicProfile, RankTransition, RetractSubmission, Submission, Summary, UpdateMe,
 };
@@ -225,6 +225,12 @@ impl Client {
     /// `GET /v1/me/credits` — credit balance.
     pub async fn credit_balance(&self) -> Result<CreditBalance, CrowdsourceError> {
         self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/credits")))
+            .await
+    }
+
+    /// `GET /v1/me/streaks/daily` — the caller's daily participation streak.
+    pub async fn daily_streak(&self) -> Result<DailyStreak, CrowdsourceError> {
+        self.exec_get(self.build(Method::GET, &format!("{API_V1}/me/streaks/daily")))
             .await
     }
 
