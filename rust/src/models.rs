@@ -111,6 +111,9 @@ pub struct Competition {
     /// Reject submissions within this many seconds of `end_date` (0 = none).
     #[serde(default)]
     pub close_window_seconds: i32,
+    /// Stable id shared by all cycles of a recurring competition (None for one-offs).
+    #[serde(default)]
+    pub series_id: Option<String>,
     /// The caller's access relationship to a non-public comp (owner/requested/
     /// approved/invited/denied), when authenticated.
     #[serde(default)]
