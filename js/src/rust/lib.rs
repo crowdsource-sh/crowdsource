@@ -94,6 +94,67 @@ impl Client {
         future_to_promise(async move { to_js(&inner.credit_balance().await.map_err(err)?) })
     }
 
+    /// `profile(handle)` — a user's public profile.
+    #[wasm_bindgen(js_name = profile)]
+    pub fn profile(&self, handle: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move { to_js(&inner.profile(&handle).await.map_err(err)?) })
+    }
+
+    /// `requestAccess(competitionId)` — request access to a restricted competition.
+    #[wasm_bindgen(js_name = requestAccess)]
+    pub fn request_access(&self, competition_id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&competition_id).map_err(|e| error(&e.to_string()))?;
+            inner.request_access(id).await.map_err(err)?;
+            Ok(JsValue::NULL)
+        })
+    }
+
+    /// `manageAccess(competitionId, handle, action)` — host: invite/approve/deny.
+    #[wasm_bindgen(js_name = manageAccess)]
+    pub fn manage_access(&self, competition_id: String, handle: String, action: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&competition_id).map_err(|e| error(&e.to_string()))?;
+            inner
+                .manage_access(id, &handle, &action)
+                .await
+                .map_err(err)?;
+            Ok(JsValue::NULL)
+        })
+    }
+
+    /// `listAccess(competitionId)` — host: list access requests + grants.
+    #[wasm_bindgen(js_name = listAccess)]
+    pub fn list_access(&self, competition_id: String) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let id = Uuid::parse_str(&competition_id).map_err(|e| error(&e.to_string()))?;
+            to_js(&inner.list_access(id).await.map_err(err)?)
+        })
+    }
+
+    /// `giftCredits(recipientHandle, amount, message?)` — gift credits to a user.
+    #[wasm_bindgen(js_name = giftCredits)]
+    pub fn gift_credits(
+        &self,
+        recipient_handle: String,
+        amount: f64,
+        message: Option<String>,
+    ) -> Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            to_js(
+                &inner
+                    .gift_credits(&recipient_handle, amount as i64, message.as_deref())
+                    .await
+                    .map_err(err)?,
+            )
+        })
+    }
+
     /// `getOrg(id)`.
     #[wasm_bindgen(js_name = getOrg)]
     pub fn get_org(&self, id: String) -> Promise {
