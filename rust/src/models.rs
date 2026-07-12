@@ -102,8 +102,35 @@ pub struct Competition {
     pub min_participants: Option<i32>,
     #[serde(default)]
     pub min_score: Option<f64>,
+    /// Join mode: `public` (default), `restricted`, or `invite`.
+    #[serde(default = "default_public")]
+    pub access_mode: String,
+    /// Hidden from browse / get-by-id for non-owner/non-invited.
+    #[serde(default)]
+    pub unlisted: bool,
+    /// Reject submissions within this many seconds of `end_date` (0 = none).
+    #[serde(default)]
+    pub close_window_seconds: i32,
+    /// Stable id shared by all cycles of a recurring competition (None for one-offs).
+    #[serde(default)]
+    pub series_id: Option<String>,
+    /// The caller's access relationship to a non-public comp (owner/requested/
+    /// approved/invited/denied), when authenticated.
+    #[serde(default)]
+    pub my_access: Option<String>,
+    /// Why a `scoring_failed` competition voided: `no_participation` |
+    /// `threshold` | `oracle_error` | `market_closed`.
+    #[serde(default)]
+    pub failure_reason: Option<String>,
+    /// Scored participant count, stamped at resolution.
+    #[serde(default)]
+    pub participant_count: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_public() -> String {
+    "public".to_string()
 }
 
 /// Body for `POST /v1/competitions`. Optional fields are omitted when `None`.
@@ -148,6 +175,15 @@ pub struct CreateCompetition {
     pub min_participants: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_score: Option<f64>,
+    /// Join mode: `public` (default), `restricted`, or `invite`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_mode: Option<String>,
+    /// Hide from browse / get-by-id (private). Only for non-public modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlisted: Option<bool>,
+    /// Reject submissions within this many seconds of `end_date` (0 = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_window_seconds: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,6 +296,18 @@ pub struct CreditBalance {
     pub balance: i64,
     pub purchased_total: i64,
     pub earned_total: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyStreak {
+    pub enabled: bool,
+    pub current: i32,
+    pub longest: i32,
+    pub today_complete: bool,
+    #[serde(default)]
+    pub last_qualified_date: Option<String>,
+    #[serde(default)]
+    pub next_milestone: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -539,4 +587,74 @@ pub struct EconomicConfig {
 pub struct EconomicConfigResponse {
     pub version: i64,
     pub config: EconomicConfig,
+}
+
+/// A public user profile (`GET /v1/users/{handle}`) — public fields only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicProfile {
+    pub id: String,
+    pub handle: String,
+    pub display_name: Option<String>,
+    /// Resolved seed for the deterministic generated avatar.
+    pub avatar_seed: String,
+    pub rank_tier: String,
+    pub rank_level: i32,
+    /// `admin` / `staff` for platform operators (else absent).
+    #[serde(default)]
+    pub staff: Option<String>,
+    pub member_since: String,
+    pub stats: PublicStats,
+    pub leaderboard: PublicLeaderboard,
+    pub badges: Vec<ProfileBadge>,
+}
+
+/// Headline public stats on a profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicStats {
+    pub competitions_entered: i64,
+    pub competitions_hosted: i64,
+    pub earned_credits: i64,
+    pub scored_count: i64,
+    pub win_count: i64,
+    pub top3_count: i64,
+    pub points: f64,
+}
+
+/// A profile's leaderboard standing (lifetime).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicLeaderboard {
+    pub ranked: bool,
+    pub provisional: bool,
+    pub global_rank: Option<i64>,
+    pub global_total: i64,
+    pub tier_rank: Option<i64>,
+    pub tier_total: i64,
+}
+
+/// An earned badge shown on a profile (empty until the badge system ships).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileBadge {
+    pub slug: String,
+    pub name: String,
+    pub icon: String,
+}
+
+/// Result of gifting credits to another user (`POST /v1/credits/gift`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GiftResponse {
+    pub recipient_handle: String,
+    pub amount: i64,
+    /// The sender's balance after the gift.
+    pub balance: i64,
+}
+
+/// A competition access row (`GET /v1/competitions/{id}/access`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccessRow {
+    pub user_id: String,
+    pub handle: Option<String>,
+    pub display_name: Option<String>,
+    /// `requested` | `approved` | `invited` | `denied`.
+    pub status: String,
+    pub created_at: String,
 }

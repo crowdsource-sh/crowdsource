@@ -98,6 +98,68 @@ impl Client {
         to_py(py, &res)
     }
 
+    /// A user's public profile by handle.
+    fn profile(&self, py: Python<'_>, handle: &str) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.profile(handle))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    /// Request access to a restricted competition.
+    fn request_access(&self, py: Python<'_>, competition_id: String) -> PyResult<Py<PyAny>> {
+        let id =
+            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.rt
+            .block_on(self.inner.request_access(id))
+            .map_err(pyerr)?;
+        Ok(py.None())
+    }
+
+    /// Host: invite / approve / deny a user's access by handle.
+    fn manage_access(
+        &self,
+        py: Python<'_>,
+        competition_id: String,
+        handle: &str,
+        action: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let id =
+            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.rt
+            .block_on(self.inner.manage_access(id, handle, action))
+            .map_err(pyerr)?;
+        Ok(py.None())
+    }
+
+    /// Host: list access requests + grants for a competition.
+    fn list_access(&self, py: Python<'_>, competition_id: String) -> PyResult<Py<PyAny>> {
+        let id =
+            Uuid::parse_str(&competition_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let res = self
+            .rt
+            .block_on(self.inner.list_access(id))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
+    /// Gift credits to another user by handle.
+    #[pyo3(signature = (recipient_handle, amount, message=None))]
+    fn gift_credits(
+        &self,
+        py: Python<'_>,
+        recipient_handle: &str,
+        amount: i64,
+        message: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let res = self
+            .rt
+            .block_on(self.inner.gift_credits(recipient_handle, amount, message))
+            .map_err(pyerr)?;
+        to_py(py, &res)
+    }
+
     fn get_org(&self, py: Python<'_>, org_id: String) -> PyResult<Py<PyAny>> {
         let id = Uuid::parse_str(&org_id).map_err(|e| PyValueError::new_err(e.to_string()))?;
         let res = self.rt.block_on(self.inner.get_org(id)).map_err(pyerr)?;
