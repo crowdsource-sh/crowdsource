@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 # The core's `client` feature compiles its reqwest transport against the browser
 # fetch backend on wasm (no rustls), so the wasm shell wraps the real Client.
 crowdsource = { path = "../rust", version = "*", default-features = false, features = ["client"] }
-wasm-bindgen = "=0.2.121"
+wasm-bindgen = "=0.2.126"
 wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 serde = "1.0"
